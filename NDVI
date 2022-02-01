@@ -1,0 +1,139 @@
+from osgeo import gdal
+import glob
+import sys
+import numpy 
+import numpy as np
+
+# Search current directory for tif rasters
+InputImages = glob.glob('zy301a_mux_037752_071156_20181027125551_01_sec_0004_1810302225_n.tif')
+
+# Define format and datatype of output raster
+gdalformat = 'tif'
+gdaldatatype = gdal.GDT_Byte
+
+# Terminate the script if the returned list is empty
+if not InputImages:
+  sys.exit("Error: No input images provided.")
+
+for Raster in sorted(InputImages):
+    OutImage = Raster.replace('.tif','_ndvi.tif')
+    #open image
+    print("Reading " + Raster)
+    Image = gdal.Open(Raster)
+    #ndvi calculation
+    b3 = Image.GetRasterBand(3).ReadAsArray().astype(float)
+    b4 = Image.GetRasterBand(4).ReadAsArray().astype(float)
+    ndvi = (b4 - b3)/(b4 + b3)
+
+    # Create an output raster the same size as the input image
+    driver = gdal.GetDriverByName('GTiff')
+    metadata = driver.GetMetadata()
+    output = driver.Create(OutImage, Image.RasterXSize, Image.RasterYSize, 1, gdal.GDT_Float32, options=["COMPRESS=LZW"])
+
+    # Create projection info for the output raster
+    output.SetProjection(Image.GetProjectionRef())
+    output.SetGeoTransform(Image.GetGeoTransform()) 
+
+    # Write classification to band 1
+    output_band=output.GetRasterBand(1)
+    output_band.WriteArray(ndvi)
+    output_band.SetNoDataValue(0)
+
+    # Close datasets
+    output_band = None
+    output = None
+    Image = None
+    del ndvi
+    #create Byte image
+    ds = gdal.Open(OutImage)   
+    outRaster= ('ndvi_temp.tif')  
+    # create color table
+    colors = gdal.ColorTable()
+    # set color for each value
+    colors.SetColorEntry(0, ( 0, 0, 0))
+    colors.SetColorEntry(1, ( 215, 25, 28))
+    colors.SetColorEntry(2, (  232, 91, 58))
+    colors.SetColorEntry(3, ( 249, 158, 89))
+    colors.SetColorEntry(4, (254, 201, 129))
+    colors.SetColorEntry(5, (255, 237, 171))
+    colors.SetColorEntry(6, (236, 247, 173))
+    colors.SetColorEntry(7, (196, 230, 135))
+    colors.SetColorEntry(8, (151, 210, 101))
+    colors.SetColorEntry(9, (88, 180, 83))
+    colors.SetColorEntry(10, (26, 150, 65))
+
+
+    lista= ds.GetRasterBand(1).ReadAsArray().astype(np.float32)
+    # reclassification
+    print("reclassification")
+    for j in  range(ds.RasterXSize):
+        for i in  range(ds.RasterYSize):
+            #if lista[i,j] == 0:
+                #lista[i,j] = 0
+            if lista[i,j] < -0.137:
+                lista[i,j] = 1
+            elif -0.137 < lista[i,j] < -0.0571:
+                lista[i,j] = 2
+            elif -0.0571 < lista[i,j] < 0.0231:
+                lista[i,j] = 3
+            elif 0.0231 < lista[i,j] < 0.103:
+                lista[i,j] = 4
+            elif 0.103< lista[i,j] < 0.184:
+                lista[i,j] = 5
+            elif 0.184 < lista[i,j] < 0.264:
+                lista[i,j] = 6
+            elif 0.264 < lista[i,j] < 0.344:
+                lista[i,j] = 7
+            elif 0.344 < lista[i,j] < 0.424:
+                lista[i,j] = 8
+            elif  0.424 < lista[i,j] < 0.505:
+                lista[i,j] = 9
+            elif  0.505 < lista[i,j] < 1.0:
+                lista[i,j] = 10
+            #else:
+                #lista[i,j] = 10
+
+    driver = gdal.GetDriverByName('GTiff')
+    metadata = driver.GetMetadata()
+    output = driver.Create(outRaster, ds.RasterXSize, ds.RasterYSize, 1, gdal.GDT_Byte, options=["COMPRESS=LZW"])
+
+    # Create projection info for the output raster
+    output.SetProjection(ds.GetProjectionRef())
+    output.SetGeoTransform(ds.GetGeoTransform()) 
+
+    # Write classification to band 1
+    output_band=output.GetRasterBand(1)
+    output_band.WriteArray(lista)
+    output_band.SetNoDataValue(0)
+    # set color table and color interpretation
+    output_band.SetRasterColorTable(colors)
+    output_band.SetRasterColorInterpretation(gdal.GCI_PaletteIndex)
+
+    # Close datasets
+    output_band = None
+    output = None
+    ds= None
+    del lista
+
+    #create jpeg
+
+    dataset= gdal.Open('ndvi_temp.tif')
+    options_list = [
+        '-expand rgba',
+        '-of JPEG',
+        '-outsize 1000 1000',
+        'QUALITY=50'
+    ] 
+    options_string = " ".join(options_list)
+
+    gdal.Translate('zy301a_mux_037752_071156_20181027125551_01_sec_0004_1810302225_ndvi.jpg',
+                dataset,
+                options=options_string)
+    # close and save file
+    dataset = None
+    print("colorset")
+
+
+print("All images processed.")
+
+
